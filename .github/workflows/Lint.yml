@@ -26,8 +26,8 @@ jobs:
           version: "1"
       - name: Use Julia cache
         uses: julia-actions/cache@v2
-      - name: Install Julia packages
-        run: julia -e 'using Pkg; pkg"add JuliaFormatter"'
+      - name: Install Julia requirements
+        run: julia --project=${GITHUB_WORKSPACE}/.formatting -e 'import Pkg; Pkg.instantiate()'
       - name: Hack for setup-python cache # https://github.com/actions/setup-python/issues/807
         run: touch requirements.txt
       - name: Setup Python
