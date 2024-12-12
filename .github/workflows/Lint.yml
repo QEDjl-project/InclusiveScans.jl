@@ -26,8 +26,8 @@ jobs:
           version: "1"
       - name: Use Julia cache
         uses: julia-actions/cache@v2
-      - name: Install Julia packages
-        run: julia -e 'using Pkg; pkg"add JuliaFormatter"'
+      - name: Install Julia requirements
+        run: julia --project=${GITHUB_WORKSPACE}/.formatting -e 'import Pkg; Pkg.instantiate()'
       - name: Hack for setup-python cache # https://github.com/actions/setup-python/issues/807
         run: touch requirements.txt
       - name: Setup Python
@@ -46,15 +46,3 @@ jobs:
         run: pip install pre-commit
       - name: Run pre-commit
         run: SKIP=no-commit-to-branch pre-commit run -a
-  link-checker:
-    name: Link checker
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Link Checker
-        id: lychee
-        uses: lycheeverse/lychee-action@v2
-        with:
-          fail: true
-          args: --config '.lychee.toml' .

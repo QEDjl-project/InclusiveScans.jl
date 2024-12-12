@@ -1,7 +1,12 @@
 using InclusiveScans
 using Documenter
 
-DocMeta.setdocmeta!(InclusiveScans, :DocTestSetup, :(using InclusiveScans); recursive = true)
+DocMeta.setdocmeta!(
+    InclusiveScans,
+    :DocTestSetup,
+    :(using InclusiveScans);
+    recursive = true,
+)
 
 const page_rename = Dict("developer.md" => "Developer docs") # Without the numbers
 const numbered_pages = [
@@ -14,7 +19,9 @@ makedocs(;
     authors = "Uwe Hernandez Acosta, Simeon Ehrig",
     repo = "https://github.com/QEDjl-project/InclusiveScans.jl/blob/{commit}{path}#{line}",
     sitename = "InclusiveScans.jl",
-    format = Documenter.HTML(; canonical = "https://QEDjl-project.github.io/InclusiveScans.jl"),
+    format = Documenter.HTML(;
+        canonical = "https://QEDjl-project.github.io/InclusiveScans.jl",
+    ),
     pages = ["index.md"; numbered_pages],
 )
 
