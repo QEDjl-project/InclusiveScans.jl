@@ -14,6 +14,7 @@ The distribution and sampling functionality (CPU-based) are implemented in the `
 ## Setup Instructions
 
 ### 1. Clone the Repository
+
 Ensure you have cloned the repository containing this example.
 
 ```bash
@@ -31,6 +32,7 @@ julia --project=. init.jl
 ```
 
 This script will:
+
 - Link the source code of `InclusiveScans.jl` and `ConstrainedGaussians.jl` to the example environment.
 - Install all other necessary dependencies.
 - Instantiate the example environment
@@ -48,19 +50,24 @@ julia --project example.jl
 ```
 
 ### 2. Output
+
 - The script generates **1 million samples** from a constrained Gaussian distribution.
 - A histogram comparing the generated samples with the target distribution is plotted.
 - The histogram is saved as `example_plot_compare.pdf` in the `example` directory.
 
 ### 3. Interactive Exploration (Optional)
+
 For interactive experimentation, open the Jupyter notebook `example.iypnb`:
 
 1. Ensure you have the `IJulia` package installed:
+
    ```julia
    using Pkg
    Pkg.add("IJulia")
    ```
+
 2. Start Jupyter and open the notebook:
+
    ```bash
    jupyter notebook
    ```
@@ -72,6 +79,7 @@ This allows you to explore the constrained Gaussian example interactively using 
 ## Requirements
 
 Ensure you have the following tools installed:
+
 - **Julia**: Version 1.6 or later is recommended.
 - **Jupyter** (optional): For interactive notebooks.
 
@@ -81,4 +89,3 @@ Ensure you have the following tools installed:
 
 - **Dependency Issues**: If you encounter problems during initialization, verify that the `init.jl` script executed successfully and installed all required packages.
 - **Missing `IJulia`**: Ensure the `IJulia` package is installed to enable Julia kernels in Jupyter.
-
