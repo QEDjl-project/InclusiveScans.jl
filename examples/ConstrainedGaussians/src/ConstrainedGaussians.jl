@@ -9,7 +9,7 @@ using StatsPlots
 #using InclusiveScans
 
 export ConstrainedGaussian1D
-export target_dist,filter, norm, normalize
+export target_dist, filter, norm, normalize
 export endpoints
 export generate_CPU
 export plot_compare
