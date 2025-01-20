@@ -1,10 +1,11 @@
 name = "InclusiveScans"
 uuid = "ef74772d-374f-5edb-a43a-0dbb31824c9d"
-authors = [
-    "Uwe Hernandez Acosta",
-    " Simeon Ehrig",
-]
+authors = ["Uwe Hernandez Acosta", " Simeon Ehrig"]
 version = "0.1.0"
 
+[deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+
 [compat]
+CUDA = "5.6.1"
 julia = "1.10"

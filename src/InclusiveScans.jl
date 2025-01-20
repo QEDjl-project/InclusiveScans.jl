@@ -106,6 +106,7 @@ function _scanBlockKernel!(
     return nothing
 end
 
+# Add prefix sum from previous blocks (d_increments[blockIdx.x]) to all elements processing by this block
 function _addIncrementsKernel!(
     g_odata::CuDeviceVector{Float32,1},
     incr::CuDeviceVector{Float32,1},
