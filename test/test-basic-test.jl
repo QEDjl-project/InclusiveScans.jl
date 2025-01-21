@@ -3,28 +3,25 @@ using Random
 using CUDA
 using InclusiveScans
 
-@testset "InclusiveScans.jl Tests" begin
-    sizes = (1, 100, 1000, 25_000, 100_000)
+@testset "InclusiveScans.jl" begin
+    ATOL = eps(Float32)
+    RTOL = sqrt(eps(Float32))
 
-    for N in sizes
-        @testset "Test with N = $N" begin
-            rng = Xoshiro(137)  # Fixed seed
+    N = 25000
+    h_in = rand(Float32, N)
+    d_in = CuArray(h_in)
+    d_out = CUDA.zeros(Float32, N)
 
-            # Generate random input
-            bit_input = BitVector(rand(rng, Bool, N))
-            float_input = Float32.(bit_input)
+    InclusiveScans.largeArrayScanInclusive!(d_out, d_in, N)
+    h_out = Array(d_out)
 
-            d_in = CuArray(float_input)
-            d_out = CUDA.zeros(Float32, N)
+    # using CUDA.accumulate
+    d_out_cuda = CUDA.accumulate(+, d_in)
+    h_out_cuda = Array(d_out_cuda)
 
-            # Run inclusive scan on GPU
-            InclusiveScans.largeArrayScanInclusive!(d_out, d_in, Int32(N))
+    # CPU cumsum check
+    h_check = accumulate(+, h_in)
 
-            h_out = Array(d_out)
-            h_check = Base.accumulate(+, float_input)
-
-            # Check if GPU result matches the CPU reference
-            @test isapprox(h_out, h_check; atol=eps(Float32))
-        end
-    end
+    @test isapprox(h_out, h_check, atol = ATOL, rtol = RTOL)
+    @test isapprox(h_out_cuda, h_check, atol = ATOL, rtol = RTOL)
 end

@@ -1,0 +1,8 @@
+[deps]
+BenchmarkPlots = "ab8c0f59-4072-4e0d-8f91-a91e1495eb26"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+InclusiveScans = "ef74772d-374f-5edb-a43a-0dbb31824c9d"
+OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
