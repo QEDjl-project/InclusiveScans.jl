@@ -3,7 +3,7 @@ using BenchmarkTools
 using InclusiveScans
 
 CUDA.versioninfo()
-CUDA.device()
+display(CUDA.device())
 
 const SUITE = BenchmarkGroup()
 
@@ -22,7 +22,7 @@ for PROBLEM_SIZE in PROBLEM_SIZES
     
     d_in_ic = CuArray(h_in)
     d_out_ic = CUDA.zeros(Float32, PROBLEM_SIZE)
-    SUITE["Base.accumulate!"][_build_label(PROBLEM_SIZE)] =
+    SUITE["InclusiveScans.jl"][_build_label(PROBLEM_SIZE)] =
         @benchmarkable CUDA.@sync InclusiveScans.largeArrayScanInclusive!(
             $d_out_ic,
             $d_in_ic,
@@ -30,13 +30,13 @@ for PROBLEM_SIZE in PROBLEM_SIZES
         )
 
     h_out = zeros(PROBLEM_SIZE)
-    SUITE["CUDA.accumulate!"][_build_label(PROBLEM_SIZE)] =
-        @benchmarkable Base.accumulate!(+, $h_in, $h_out)
+    SUITE["Base.accumulate!"][_build_label(PROBLEM_SIZE)] =
+        @benchmarkable Base.accumulate!(+, $h_out, $h_in)
 
     d_in_cu= CuArray(h_in)
     d_out_cu = CUDA.zeros(Float32, PROBLEM_SIZE)
-    SUITE["InclusiveScans.jl"][_build_label(PROBLEM_SIZE)]=
-        @benchmarkable CUDA.@sync CUDA.accumulate!(+, $d_in_cu, $d_out_cu)
+    SUITE["CUDA.accumulate!"][_build_label(PROBLEM_SIZE)]=
+        @benchmarkable CUDA.@sync CUDA.accumulate!(+, $d_out_cu, $d_in_cu)
 
 end
 
