@@ -1,28 +1,30 @@
-using InclusiveScans
+using Test
+using Random
 using CUDA
+using InclusiveScans
 
-@testset "InclusiveScans.jl" begin
-    function _cpu_inclusive_cumsum(x::Vector{Float32})
-        s = 0.0f0
-        out = similar(x)
-        for i = 1:length(x)
-            s += x[i]
-            out[i] = s
+@testset "InclusiveScans.jl Tests" begin
+    sizes = (1, 100, 1000, 25_000, 100_000)
+
+    for N in sizes
+        @testset "Test with N = $N" begin
+            rng = Xoshiro(137)  # Fixed seed
+
+            # Generate random input
+            bit_input = BitVector(rand(rng, Bool, N))
+            float_input = Float32.(bit_input)
+
+            d_in = CuArray(float_input)
+            d_out = CUDA.zeros(Float32, N)
+
+            # Run inclusive scan on GPU
+            InclusiveScans.largeArrayScanInclusive!(d_out, d_in, Int32(N))
+
+            h_out = Array(d_out)
+            h_check = Base.accumulate(+, float_input)
+
+            # Check if GPU result matches the CPU reference
+            @test isapprox(h_out, h_check; atol=eps(Float32))
         end
-        return out
     end
-    eps = 0.1
-    N = 25000
-    h_in = rand(Float32, N)
-    d_in = CuArray(h_in)
-    d_out = CUDA.zeros(Float32, N)
-
-    InclusiveScans.largeArrayScanInclusive!(d_out, d_in, N)
-    h_out = Array(d_out)
-
-    # CPU cumsum check
-    h_check = _cpu_inclusive_cumsum(h_in)
-
-    maxdiff = maximum(abs.(h_out .- h_check))
-    @test maxdiff < eps
 end
