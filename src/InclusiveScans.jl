@@ -2,52 +2,34 @@ module InclusiveScans
 
 using CUDA
 
-# CUDA scan block size
-const BLOCK_SIZE = 1024
+const BLOCK_SIZE::Int32 = 1024
 
-@inline function _ceil_div(a, b)
-    return cld(a, b)
-end
-
-# Execute BLELLOCH EXCLUSIVE‐prefix-sum for current block.
-# - Each block processes 2 * BLOCK_SIZE elements (2 per thread).
-# - If `blockSums !== nothing`, writes the "block sum" to blockSums[blockIdx.x].
-# - Otherwise skips this step (when we scan blockSums itself).
 function _scanBlockKernel!(
     g_odata::CuDeviceVector{Float32,1},
     g_idata::CuDeviceVector{Float32,1},
     blockSums::Union{CuDeviceVector{Float32,1},Nothing},
-    n::Int,
+    n::Int32,
 )
-    # Dynamic shared memory on 2*BLOCK_SIZE float
-    temp = @cuDynamicSharedMem(Float32, blockDim().x * 2)
+    temp = CuDynamicSharedArray(Float32, blockDim().x * 2)
 
     tx = threadIdx().x - 1
     bx = blockIdx().x - 1
 
-    # Every block evaluate 2*BLOCK_SIZE => start = bx*(2*BLOCK_SIZE)
     start = bx * (blockDim().x * 2)
-
-    function sm(i::Int)
-        return temp[i+1]
-    end
-    function set_sm(i::Int, v::Float32)
-        temp[i+1] = v
-    end
 
     i1 = start + tx * 2
     i2 = i1 + 1
 
     if tx >= 0 && 2 * tx < 2 * blockDim().x
         if i1 < n
-            set_sm(2 * tx, g_idata[i1+1])
+            temp[2*tx+1] = g_idata[i1+1]
         else
-            set_sm(2 * tx, 0.0f0)
+            temp[2*tx+1] = 0.0f0
         end
         if i2 < n
-            set_sm(2 * tx + 1, g_idata[i2+1])
+            temp[2*tx+2] = g_idata[i2+1]
         else
-            set_sm(2 * tx + 1, 0.0f0)
+            temp[2*tx+2] = 0.0f0
         end
     end
     sync_threads()
@@ -60,7 +42,7 @@ function _scanBlockKernel!(
         if tx < d
             ai = offset * (2 * tx + 1) - 1
             bi = offset * (2 * tx + 2) - 1
-            set_sm(bi, sm(bi) + sm(ai))
+            temp[bi+1] += temp[ai+1]
         end
         offset <<= 1
         d >>= 1
@@ -68,13 +50,12 @@ function _scanBlockKernel!(
 
     sync_threads()
 
-    # Save sum of block -> blockSums[bx], 
-    # Set last to 0 (to get EXCLUSIVE)
+    # Save sum of block -> blockSums[bx]
     if tx == 0
         if blockSums !== nothing
-            blockSums[bx+1] = sm(2 * blockDim().x - 1)
+            blockSums[bx+1] = temp[2*blockDim().x]
         end
-        set_sm(2 * blockDim().x - 1, 0.0f0)
+        temp[2*blockDim().x] = 0.0f0
     end
     sync_threads()
 
@@ -86,9 +67,9 @@ function _scanBlockKernel!(
         if tx < d
             ai = offset * (2 * tx + 1) - 1
             bi = offset * (2 * tx + 2) - 1
-            t = sm(ai)
-            set_sm(ai, sm(bi))
-            set_sm(bi, sm(bi) + t)
+            t = temp[ai+1]
+            temp[ai+1] = temp[bi+1]
+            temp[bi+1] += t
         end
         d <<= 1
     end
@@ -96,10 +77,10 @@ function _scanBlockKernel!(
 
     if tx >= 0 && 2 * tx < 2 * blockDim().x
         if i1 < n
-            g_odata[i1+1] = sm(2 * tx)
+            g_odata[i1+1] = temp[2*tx+1]
         end
         if i2 < n
-            g_odata[i2+1] = sm(2 * tx + 1)
+            g_odata[i2+1] = temp[2*tx+2]
         end
     end
 
@@ -110,7 +91,7 @@ end
 function _addIncrementsKernel!(
     g_odata::CuDeviceVector{Float32,1},
     incr::CuDeviceVector{Float32,1},
-    n::Int,
+    n::Int32,
 )
     tx = threadIdx().x - 1
     bx = blockIdx().x - 1
@@ -127,62 +108,43 @@ function _addIncrementsKernel!(
     return nothing
 end
 
-function _exclusiveToInclusiveKernel!(
-    d_out::CuDeviceVector{Float32,1},
-    d_in::CuDeviceVector{Float32,1},
-    n::Int,
-)
-    idx = (blockIdx().x - 1) * blockDim().x + (threadIdx().x - 1)
-    if idx >= 0 && idx < n
-        d_out[idx+1] += d_in[idx+1]
-    end
-    return nothing
-end
-
-# EXCLUSIVE‐scan (Blelloch) to inclusive and write in d_out.
-# d_out[i] = sum of elements to i (include i) d_in array.
-function largeArrayScanInclusive!(d_out::CuArray{Float32}, d_in::CuArray{Float32}, n::Int)
-    # Blocks scan
-    numBlocks = _ceil_div(n, BLOCK_SIZE * 2)
+function largeArrayScanInclusive!(d_out::CuArray{Float32}, d_in::CuArray{Float32}, n::Int32)
+    numBlocks = Int32(cld(n, BLOCK_SIZE * 2))
 
     d_blockSums = CUDA.zeros(Float32, numBlocks)
     d_increments = CUDA.zeros(Float32, numBlocks)
 
     shmem_size = BLOCK_SIZE * 2 * sizeof(Float32)
+
+    # Block-scan (EXCLUSIVE Blelloch):
     @cuda threads = BLOCK_SIZE blocks = numBlocks shmem = shmem_size _scanBlockKernel!(
         d_out,
         d_in,
         d_blockSums,
-        Int(n),
+        n,
     )
     CUDA.synchronize()
 
-    # Scan d_blockSums in one block (exclusive)
+    # Add the block prefixes (also EXCLUSIVE) into one block
     @cuda threads = BLOCK_SIZE blocks = 1 shmem = shmem_size _scanBlockKernel!(
         d_increments,
         d_blockSums,
         nothing,
-        Int(numBlocks),
+        numBlocks,
     )
     CUDA.synchronize()
 
-    # Add increment in each block
+    # Add prefixes to each block
     @cuda threads = BLOCK_SIZE blocks = numBlocks _addIncrementsKernel!(
         d_out,
         d_increments,
-        Int(n),
+        n,
     )
     CUDA.synchronize()
 
-    numThreads = min(BLOCK_SIZE, n)
-    numFullBlocks = _ceil_div(n, BLOCK_SIZE)
-    @cuda threads = numThreads blocks = numFullBlocks _exclusiveToInclusiveKernel!(
-        d_out,
-        d_in,
-        Int(n),
-    )
-    CUDA.synchronize()
-
+    # Turning an EXCLUSIVE result into an INCLUSIVE one by adding input elements
+    d_out .+= d_in
     return nothing
 end
+
 end
