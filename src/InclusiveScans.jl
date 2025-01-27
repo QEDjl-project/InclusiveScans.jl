@@ -5,15 +5,15 @@ using CUDA
 const BLOCK_SIZE::Int32 = 1024
 
 function _scanBlockKernel!(
-    g_odata::CuDeviceVector{Float32,1},
-    g_idata::CuDeviceVector{Float32,1},
-    blockSums::Union{CuDeviceVector{Float32,1},Nothing},
+    g_odata,
+    g_idata,
+    blockSums::Union{CuDeviceVector{T,1},Nothing},
     n::Int32,
-)
-    temp = CuDynamicSharedArray(Float32, blockDim().x * 2)
+) where {T}
+    temp = CuDynamicSharedArray(T, blockDim().x * 2)
 
-    tx = threadIdx().x - 1
-    bx = blockIdx().x - 1
+    tx = threadIdx().x - 1i32
+    bx = blockIdx().x - 1i32
 
     start = bx * (blockDim().x * 2)
 
@@ -40,8 +40,8 @@ function _scanBlockKernel!(
     while d > 0
         sync_threads()
         if tx < d
-            ai = offset * (2 * tx + 1) - 1
-            bi = offset * (2 * tx + 2) - 1
+            ai = offset * (2 * tx + 1) - 1i32
+            bi = offset * (2 * tx + 2) - 1i32
             temp[bi+1] += temp[ai+1]
         end
         offset <<= 1
@@ -65,8 +65,8 @@ function _scanBlockKernel!(
         offset >>= 1
         sync_threads()
         if tx < d
-            ai = offset * (2 * tx + 1) - 1
-            bi = offset * (2 * tx + 2) - 1
+            ai = offset * (2 * tx + 1) - 1i32
+            bi = offset * (2 * tx + 2) - 1i32
             t = temp[ai+1]
             temp[ai+1] = temp[bi+1]
             temp[bi+1] += t
@@ -88,13 +88,9 @@ function _scanBlockKernel!(
 end
 
 # Add prefix sum from previous blocks (d_increments[blockIdx.x]) to all elements processing by this block
-function _addIncrementsKernel!(
-    g_odata::CuDeviceVector{Float32,1},
-    incr::CuDeviceVector{Float32,1},
-    n::Int32,
-)
-    tx = threadIdx().x - 1
-    bx = blockIdx().x - 1
+function _addIncrementsKernel!(g_odata, incr, n::Int32)
+    tx = threadIdx().x - 1i32
+    bx = blockIdx().x - 1i32
 
     start = bx * (blockDim().x * 2)
     i = start + tx * 2
@@ -108,13 +104,23 @@ function _addIncrementsKernel!(
     return nothing
 end
 
-function largeArrayScanInclusive!(d_out::CuArray{Float32}, d_in::CuArray{Float32}, n::Int32)
+function prepareScanBlocks!(n::Int32)
     numBlocks = Int32(cld(n, BLOCK_SIZE * 2))
 
-    d_blockSums = CUDA.zeros(Float32, numBlocks)
-    d_increments = CUDA.zeros(Float32, numBlocks)
+    d_blockSums = CUDA.zeros(T, numBlocks)
+    d_increments = CUDA.zeros(T, numBlocks)
+    return (numBlocks, d_blockSums, d_increments)
+end
 
-    shmem_size = BLOCK_SIZE * 2 * sizeof(Float32)
+function largeArrayScanInclusive!(
+    d_out::CuArray{T},
+    d_in::CuArray{T},
+    n::Int32,
+    d_blockSums::CuArray{T},
+    d_increments::CuArray{T},
+    numBlocks::Int32,
+) where {T}
+    shmem_size = BLOCK_SIZE * 2 * sizeof(T)
 
     # Block-scan (EXCLUSIVE Blelloch):
     @cuda threads = BLOCK_SIZE blocks = numBlocks shmem = shmem_size _scanBlockKernel!(
@@ -144,6 +150,12 @@ function largeArrayScanInclusive!(d_out::CuArray{Float32}, d_in::CuArray{Float32
 
     # Turning an EXCLUSIVE result into an INCLUSIVE one by adding input elements
     d_out .+= d_in
+    return nothing
+end
+
+function largeArrayScanInclusive!(d_out::CuArray{T}, d_in::CuArray{T}, n::Int32) where {T}
+    numBlocks, d_blockSums, d_increments = prepareScanBlocks!(n)
+    largeArrayScanInclusive!(d_out, d_in, n, numBlocks, d_blockSums, d_increments)
     return nothing
 end
 
