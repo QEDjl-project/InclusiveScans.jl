@@ -12,7 +12,7 @@ using InclusiveScans
     d_in = CuArray(h_in)
     d_out = CUDA.zeros(Float32, N)
 
-    InclusiveScans.largeArrayScanInclusive!(d_out, d_in, N)
+    InclusiveScans.largeArrayScanInclusive!(d_out, d_in, Int32(N))
     h_out = Array(d_out)
 
     # using CUDA.accumulate

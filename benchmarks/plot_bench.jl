@@ -11,11 +11,12 @@ for bench in keys(results)
     @show results[bench]
     push!(bench_plots,plot(
         results[bench],
+        ["2^10","2^20","2^30"],
         title=bench,
         xlab = "problem size",
         ylab = "time taken (ns)",
         yscale = :log10,
-        ylim = (1e3, 1e10),
+        ylim = (1e2, 1e10),
         framestyle = :box,
         minorticks = 10,
         legend = false,
@@ -26,4 +27,4 @@ end
 
 P = plot(bench_plots...,layout=(1,3));
 
-savefig(P,"bench_results.png");
+savefig(P,"bench_results_2.png");

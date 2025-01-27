@@ -22,11 +22,12 @@ for PROBLEM_SIZE in PROBLEM_SIZES
     
     d_in_ic = CuArray(h_in)
     d_out_ic = CUDA.zeros(Float32, PROBLEM_SIZE)
+    PROBLEM_SIZE_INT32 = convert(Int32, PROBLEM_SIZE)
     SUITE["InclusiveScans.jl"][_build_label(PROBLEM_SIZE)] =
         @benchmarkable CUDA.@sync InclusiveScans.largeArrayScanInclusive!(
             $d_out_ic,
             $d_in_ic,
-            $PROBLEM_SIZE,
+            $PROBLEM_SIZE_INT32,
         )
 
     h_out = zeros(PROBLEM_SIZE)
