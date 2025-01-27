@@ -5,15 +5,16 @@ using CUDA
 const BLOCK_SIZE::Int32 = 1024
 
 function _scanBlockKernel!(
+    ::Type{T},
     g_odata,
     g_idata,
-    blockSums::Union{CuDeviceVector{T,1},Nothing},
+    blockSums,
     n::Int32,
 ) where {T}
     temp = CuDynamicSharedArray(T, blockDim().x * 2)
 
-    tx = threadIdx().x - 1i32
-    bx = blockIdx().x - 1i32
+    tx = threadIdx().x - 1
+    bx = blockIdx().x - 1
 
     start = bx * (blockDim().x * 2)
 
@@ -40,8 +41,8 @@ function _scanBlockKernel!(
     while d > 0
         sync_threads()
         if tx < d
-            ai = offset * (2 * tx + 1) - 1i32
-            bi = offset * (2 * tx + 2) - 1i32
+            ai = offset * (2 * tx + 1) - 1
+            bi = offset * (2 * tx + 2) - 1
             temp[bi+1] += temp[ai+1]
         end
         offset <<= 1
@@ -65,8 +66,8 @@ function _scanBlockKernel!(
         offset >>= 1
         sync_threads()
         if tx < d
-            ai = offset * (2 * tx + 1) - 1i32
-            bi = offset * (2 * tx + 2) - 1i32
+            ai = offset * (2 * tx + 1) - 1
+            bi = offset * (2 * tx + 2) - 1
             t = temp[ai+1]
             temp[ai+1] = temp[bi+1]
             temp[bi+1] += t
@@ -89,8 +90,8 @@ end
 
 # Add prefix sum from previous blocks (d_increments[blockIdx.x]) to all elements processing by this block
 function _addIncrementsKernel!(g_odata, incr, n::Int32)
-    tx = threadIdx().x - 1i32
-    bx = blockIdx().x - 1i32
+    tx = threadIdx().x - 1
+    bx = blockIdx().x - 1
 
     start = bx * (blockDim().x * 2)
     i = start + tx * 2
@@ -104,7 +105,7 @@ function _addIncrementsKernel!(g_odata, incr, n::Int32)
     return nothing
 end
 
-function prepareScanBlocks!(n::Int32)
+function prepareScanBlocks!(::Type{T}, n::Int32) where {T}
     numBlocks = Int32(cld(n, BLOCK_SIZE * 2))
 
     d_blockSums = CUDA.zeros(T, numBlocks)
@@ -124,6 +125,7 @@ function largeArrayScanInclusive!(
 
     # Block-scan (EXCLUSIVE Blelloch):
     @cuda threads = BLOCK_SIZE blocks = numBlocks shmem = shmem_size _scanBlockKernel!(
+        T,
         d_out,
         d_in,
         d_blockSums,
@@ -133,6 +135,7 @@ function largeArrayScanInclusive!(
 
     # Add the block prefixes (also EXCLUSIVE) into one block
     @cuda threads = BLOCK_SIZE blocks = 1 shmem = shmem_size _scanBlockKernel!(
+        T,
         d_increments,
         d_blockSums,
         nothing,
@@ -154,8 +157,8 @@ function largeArrayScanInclusive!(
 end
 
 function largeArrayScanInclusive!(d_out::CuArray{T}, d_in::CuArray{T}, n::Int32) where {T}
-    numBlocks, d_blockSums, d_increments = prepareScanBlocks!(n)
-    largeArrayScanInclusive!(d_out, d_in, n, numBlocks, d_blockSums, d_increments)
+    numBlocks, d_blockSums, d_increments = prepareScanBlocks!(T, n)
+    largeArrayScanInclusive!(d_out, d_in, n, d_blockSums, d_increments, numBlocks)
     return nothing
 end
 
