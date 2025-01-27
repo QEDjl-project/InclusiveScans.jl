@@ -1,6 +1,7 @@
 module InclusiveScans
 
 using CUDA
+using CUDA: i32
 
 const BLOCK_SIZE::Int32 = 1024
 
@@ -13,8 +14,8 @@ function _scanBlockKernel!(
 ) where {T}
     temp = CuDynamicSharedArray(T, blockDim().x * 2)
 
-    tx = threadIdx().x - 1
-    bx = blockIdx().x - 1
+    tx = threadIdx().x - 1i32
+    bx = blockIdx().x - 1i32
 
     start = bx * (blockDim().x * 2)
 
@@ -90,8 +91,8 @@ end
 
 # Add prefix sum from previous blocks (d_increments[blockIdx.x]) to all elements processing by this block
 function _addIncrementsKernel!(g_odata, incr, n::Int32)
-    tx = threadIdx().x - 1
-    bx = blockIdx().x - 1
+    tx = threadIdx().x - 1i32
+    bx = blockIdx().x - 1i32
 
     start = bx * (blockDim().x * 2)
     i = start + tx * 2
