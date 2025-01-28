@@ -12,77 +12,77 @@ function _scanBlockKernel!(
     blockSums,
     n::Int32,
 ) where {T}
-    temp = CuDynamicSharedArray(T, blockDim().x * 2)
+    temp = CuDynamicSharedArray(T, blockDim().x * 2i32)
 
     tx = threadIdx().x - 1i32
     bx = blockIdx().x - 1i32
 
-    start = bx * (blockDim().x * 2)
+    start = bx * (blockDim().x * 2i32)
 
-    i1 = start + tx * 2
+    i1 = start + tx * 2i32
     i2 = i1 + 1
 
-    if tx >= 0 && 2 * tx < 2 * blockDim().x
+    if tx >= 0i32 && 2i32 * tx < 2i32 * blockDim().x
         if i1 < n
-            temp[2*tx+1] = g_idata[i1+1]
+            temp[2i32*tx+1i32] = g_idata[i1+1i32]
         else
-            temp[2*tx+1] = 0.0f0
+            temp[2i32*tx+1i32] = 0.0f0
         end
         if i2 < n
-            temp[2*tx+2] = g_idata[i2+1]
+            temp[2i32*tx+2i32] = g_idata[i2+1i32]
         else
-            temp[2*tx+2] = 0.0f0
+            temp[2i32*tx+2i32] = 0.0f0
         end
     end
     sync_threads()
 
     # Up-sweep (reduce)
-    offset = 1
+    offset = 1i32
     d = blockDim().x
-    while d > 0
+    while d > 0i32
         sync_threads()
         if tx < d
-            ai = offset * (2 * tx + 1) - 1
-            bi = offset * (2 * tx + 2) - 1
-            temp[bi+1] += temp[ai+1]
+            ai = offset * (2i32 * tx + 1i32) - 1i32
+            bi = offset * (2i32 * tx + 2i32) - 1i32
+            temp[bi+1i32] += temp[ai+1i32]
         end
-        offset <<= 1
-        d >>= 1
+        offset <<= 1i32
+        d >>= 1i32
     end
 
     sync_threads()
 
     # Save sum of block -> blockSums[bx]
-    if tx == 0
+    if tx == 0i32
         if blockSums !== nothing
-            blockSums[bx+1] = temp[2*blockDim().x]
+            blockSums[bx+1i32] = temp[2i32*blockDim().x]
         end
-        temp[2*blockDim().x] = 0.0f0
+        temp[2i32*blockDim().x] = 0.0f0
     end
     sync_threads()
 
     # Down-sweep
-    d = 1
-    while d < 2 * blockDim().x
-        offset >>= 1
+    d = 1i32
+    while d < 2i32 * blockDim().x
+        offset >>= 1i32
         sync_threads()
         if tx < d
-            ai = offset * (2 * tx + 1) - 1
-            bi = offset * (2 * tx + 2) - 1
-            t = temp[ai+1]
-            temp[ai+1] = temp[bi+1]
-            temp[bi+1] += t
+            ai = offset * (2i32 * tx + 1i32) - 1i32
+            bi = offset * (2i32 * tx + 2i32) - 1i32
+            t = temp[ai+1i32]
+            temp[ai+1i32] = temp[bi+1i32]
+            temp[bi+1i32] += t
         end
-        d <<= 1
+        d <<= 1i32
     end
     sync_threads()
 
-    if tx >= 0 && 2 * tx < 2 * blockDim().x
+    if tx >= 0i32 && 2i32 * tx < 2i32 * blockDim().x
         if i1 < n
-            g_odata[i1+1] = temp[2*tx+1]
+            g_odata[i1+1i32] = temp[2i32*tx+1i32]
         end
         if i2 < n
-            g_odata[i2+1] = temp[2*tx+2]
+            g_odata[i2+1i32] = temp[2i32*tx+2i32]
         end
     end
 
@@ -94,20 +94,20 @@ function _addIncrementsKernel!(g_odata, incr, n::Int32)
     tx = threadIdx().x - 1i32
     bx = blockIdx().x - 1i32
 
-    start = bx * (blockDim().x * 2)
-    i = start + tx * 2
+    start = bx * (blockDim().x * 2i32)
+    i = start + tx * 2i32
 
     if i < n
-        g_odata[i+1] += incr[bx+1]
-        if i + 1 < n
-            g_odata[i+2] += incr[bx+1]
+        g_odata[i+1i32] += incr[bx+1i32]
+        if i + 1i32 < n
+            g_odata[i+2i32] += incr[bx+1i32]
         end
     end
     return nothing
 end
 
 function prepareScanBlocks!(::Type{T}, n::Int32) where {T}
-    numBlocks = Int32(cld(n, BLOCK_SIZE * 2))
+    numBlocks = Int32(cld(n, BLOCK_SIZE * 2i32))
 
     d_blockSums = CUDA.zeros(T, numBlocks)
     d_increments = CUDA.zeros(T, numBlocks)
@@ -122,7 +122,7 @@ function largeArrayScanInclusive!(
     d_increments::CuArray{T},
     numBlocks::Int32,
 ) where {T}
-    shmem_size = BLOCK_SIZE * 2 * sizeof(T)
+    shmem_size = BLOCK_SIZE * 2i32 * Int32(sizeof(T))
 
     # Block-scan (EXCLUSIVE Blelloch):
     @cuda threads = BLOCK_SIZE blocks = numBlocks shmem = shmem_size _scanBlockKernel!(
@@ -135,7 +135,7 @@ function largeArrayScanInclusive!(
     CUDA.synchronize()
 
     # Add the block prefixes (also EXCLUSIVE) into one block
-    @cuda threads = BLOCK_SIZE blocks = 1 shmem = shmem_size _scanBlockKernel!(
+    @cuda threads = BLOCK_SIZE blocks = 1i32 shmem = shmem_size _scanBlockKernel!(
         T,
         d_increments,
         d_blockSums,
