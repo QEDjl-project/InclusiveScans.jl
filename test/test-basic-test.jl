@@ -24,7 +24,7 @@ using InclusiveScans
             h_check = Base.accumulate(+, float_input)
 
             # Check if GPU result matches the CPU reference
-            @test isapprox(h_out, h_check; atol=eps(Float32))
+            @test isapprox(h_out, h_check; atol = eps(Float32))
         end
     end
 end

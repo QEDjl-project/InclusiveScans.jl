@@ -5,13 +5,7 @@ using CUDA: i32
 
 const BLOCK_SIZE::Int32 = 1024
 
-function _scanBlockKernel!(
-    ::Type{T},
-    g_odata,
-    g_idata,
-    blockSums,
-    n::Int32,
-) where {T}
+function _scanBlockKernel!(::Type{T}, g_odata, g_idata, blockSums, n::Int32) where {T}
     temp = CuDynamicSharedArray(T, blockDim().x * 2i32)
 
     tx = threadIdx().x - 1i32
