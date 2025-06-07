@@ -33,6 +33,14 @@ _custom_eps(::Type{Complex{T}}) where {T <: AbstractFloat} = sqrt(eps(T))
 
             # Check if GPU result matches the CPU reference
             @test isapprox(h_out, h_check, rtol = _custom_eps(T))
+
+            # Run exclusive scan on GPU
+            InclusiveScans.largeArrayScanExclusive!(d_out, d_in, Int32(N))
+
+            h_out = Array(d_out)
+            h_check .-= input
+
+            @test isapprox(h_out, h_check, rtol = _custom_eps(T))
         end
     end
 end
