@@ -9,79 +9,79 @@ function _scanBlockKernel!(
     g_odata::CuDeviceVector{T},
     g_idata::CuDeviceVector{T},
     blockSums::Union{CuDeviceVector{T},Nothing},
-    n::Int32,
-) where {T}
-    temp = CuDynamicSharedArray(T, blockDim().x * 2i32)
+    n::TIdx,
+) where {T,TIdx<:Integer}
+    temp = CuDynamicSharedArray(T, blockDim().x * TIdx(2))
 
-    tx::Int32 = threadIdx().x - 1i32
-    bx::Int32 = blockIdx().x - 1i32
+    tx::TIdx = threadIdx().x - one(TIdx)
+    bx::TIdx = blockIdx().x - one(TIdx)
 
-    start::Int32 = bx * (blockDim().x * 2i32)
+    start::TIdx = bx * (blockDim().x * TIdx(2))
 
-    i1::Int32 = start + tx * 2i32
-    i2::Int32 = i1 + 1i32
+    i1::TIdx = start + tx * TIdx(2)
+    i2::TIdx = i1 + one(TIdx)
 
-    if tx >= 0i32 && 2i32 * tx < 2i32 * blockDim().x
+    if tx >= zero(TIdx) && TIdx(2) * tx < TIdx(2) * blockDim().x
         if i1 < n
-            @inbounds temp[2i32*tx+1i32] = g_idata[i1+1i32]
+            @inbounds temp[TIdx(2)*tx+one(TIdx)] = g_idata[i1+one(TIdx)]
         else
-            @inbounds temp[2i32*tx+1i32] = zero(T)
+            @inbounds temp[TIdx(2)*tx+one(TIdx)] = zero(T)
         end
         if i2 < n
-            @inbounds temp[2i32*tx+2i32] = g_idata[i2+1i32]
+            @inbounds temp[TIdx(2)*tx+TIdx(2)] = g_idata[i2+one(TIdx)]
         else
-            @inbounds temp[2i32*tx+2i32] = zero(T)
+            @inbounds temp[TIdx(2)*tx+TIdx(2)] = zero(T)
         end
     end
     sync_threads()
 
     # Up-sweep (reduce)
-    offset::Int32 = 1i32
-    d::Int32 = blockDim().x
-    while d > 0i32
+    offset::TIdx = one(TIdx)
+    d::TIdx = blockDim().x
+    while d > zero(TIdx)
         sync_threads()
         if tx < d
-            ai::Int32 = offset * (2i32 * tx + 1i32) - 1i32
-            bi::Int32 = offset * (2i32 * tx + 2i32) - 1i32
-            @inbounds temp[bi+1i32] += temp[ai+1i32]
+            ai::TIdx = offset * (TIdx(2) * tx + TIdx(1)) - one(TIdx)
+            bi::TIdx = offset * (TIdx(2) * tx + TIdx(2)) - one(TIdx)
+            @inbounds temp[bi+one(TIdx)] += temp[ai+one(TIdx)]
         end
-        offset <<= 1i32
-        d >>= 1i32
+        offset <<= one(TIdx)
+        d >>= one(TIdx)
     end
 
     sync_threads()
 
     # Save sum of block -> blockSums[bx]
-    if tx == 0i32
+    if tx == zero(TIdx)
         if !isnothing(blockSums)
-            @inbounds blockSums[bx+1i32] = temp[2i32*blockDim().x]
+            @inbounds blockSums[bx+one(TIdx)] = temp[TIdx(2)*blockDim().x]
         end
-        @inbounds temp[2i32*blockDim().x] = zero(T)
+        @inbounds temp[TIdx(2)*blockDim().x] = zero(T)
     end
     sync_threads()
 
     # Down-sweep
-    d = 1i32
-    while d < 2i32 * blockDim().x
-        offset >>= 1i32
+    d = one(TIdx)
+    while d < TIdx(2) * blockDim().x
+        offset >>= one(TIdx)
         sync_threads()
         if tx < d
-            ai = offset * (2i32 * tx + 1i32) - 1i32
-            bi = offset * (2i32 * tx + 2i32) - 1i32
-            @inbounds t = temp[ai+1i32]
-            @inbounds temp[ai+1i32] = temp[bi+1i32]
-            @inbounds temp[bi+1i32] += t
+            ai = offset * (TIdx(2) * tx + one(TIdx)) - one(TIdx)
+            bi = offset * (TIdx(2) * tx + TIdx(2)) - one(TIdx)
+            @inbounds t = temp[ai+one(TIdx)]
+            @inbounds temp[ai+one(TIdx)] = temp[bi+one(TIdx)]
+            @inbounds temp[bi+one(TIdx)] += t
         end
-        d <<= 1i32
+        d <<= one(TIdx)
     end
     sync_threads()
 
-    if tx >= 0i32 && 2i32 * tx < 2i32 * blockDim().x
+    if tx >= zero(TIdx) && TIdx(2) * tx < TIdx(2) * blockDim().x
         if i1 < n
-            @inbounds g_odata[i1+1i32] = temp[2i32*tx+1i32]
+            @inbounds g_odata[i1+one(TIdx)] = temp[TIdx(2)*tx+one(TIdx)]
         end
         if i2 < n
-            @inbounds g_odata[i2+1i32] = temp[2i32*tx+2i32]
+            @inbounds g_odata[i2+one(TIdx)] = temp[TIdx(2)*tx+one(TIdx)+one(TIdx)]
         end
     end
 
@@ -92,75 +92,72 @@ end
 function _addIncrementsKernel!(
     g_odata::CuDeviceVector{T},
     incr::CuDeviceVector{T},
-    n::Int32,
-) where {T}
-    tx::Int32 = threadIdx().x - 1i32
-    bx::Int32 = blockIdx().x - 1i32
+    n::TIdx,
+) where {T,TIdx<:Integer}
+    tx::TIdx = threadIdx().x - one(TIdx)
+    bx::TIdx = blockIdx().x - one(TIdx)
 
-    start::Int32 = bx * (blockDim().x * 2i32)
-    i::Int32 = start + tx * 2i32
+    start::TIdx = bx * (blockDim().x * TIdx(2))
+    i::TIdx = start + tx * TIdx(2)
 
     if i < n
-        @inbounds g_odata[i+1i32] += incr[bx+1i32]
-        if i + 1i32 < n
-            @inbounds g_odata[i+2i32] += incr[bx+1i32]
+        @inbounds g_odata[i+one(TIdx)] += incr[bx+one(TIdx)]
+        if i + one(TIdx) < n
+            @inbounds g_odata[i+TIdx(2)] += incr[bx+one(TIdx)]
         end
     end
     return nothing
 end
 
-@inline function prepareScanBlocks!(::Type{T}, n::Int32) where {T}
-    numBlocks = Int32(cld(n, BLOCK_SIZE * 2i32))
+function largeArrayScanExclusive!(
+    d_out::CuVector{T},
+    d_in::CuVector{T},
+    n::TIdx,
+) where {T,TIdx<:Integer}
+    shmem_size::TIdx = BLOCK_SIZE * TIdx(2) * TIdx(sizeof(T))
 
-    d_blockSums = CUDA.zeros(T, numBlocks)
-    d_increments = CUDA.zeros(T, numBlocks)
-    return (numBlocks, d_blockSums, d_increments)
+    numBlocks = TIdx(cld(n, BLOCK_SIZE * TIdx(2)))
+
+    if numBlocks > 1 # recursive case
+        # allocate intermediate value vectors (no value initialization necessary)
+        d_blockSums = CuArray{T}(undef, numBlocks)
+        d_increments = CuArray{T}(undef, numBlocks)
+
+        # Block-scan (EXCLUSIVE Blelloch):
+        @cuda threads = BLOCK_SIZE blocks = numBlocks shmem = shmem_size always_inline =
+            true _scanBlockKernel!(d_out, d_in, d_blockSums, n)
+        CUDA.synchronize()
+
+        # Recurse to get exclusive sums of the block sums
+        largeArrayScanExclusive!(d_increments, d_blockSums, numBlocks)
+        CUDA.synchronize()
+
+        # Add prefixes to each block
+        @cuda threads = BLOCK_SIZE blocks = numBlocks always_inline = true _addIncrementsKernel!(
+            d_out,
+            d_increments,
+            n,
+        )
+        CUDA.synchronize()
+    else
+        # Base case: 1 block scan:
+        @cuda threads = BLOCK_SIZE blocks = numBlocks shmem = shmem_size always_inline =
+            true _scanBlockKernel!(d_out, d_in, nothing, n)
+        CUDA.synchronize()
+    end
+
+    return nothing
 end
 
 function largeArrayScanInclusive!(
     d_out::CuVector{T},
     d_in::CuVector{T},
-    n::Int32,
-    d_blockSums::CuVector{T},
-    d_increments::CuVector{T},
-    numBlocks::Int32,
-) where {T}
-    shmem_size::Int32 = BLOCK_SIZE * 2i32 * Int32(sizeof(T))
-
-    # Block-scan (EXCLUSIVE Blelloch):
-    @cuda threads = BLOCK_SIZE blocks = numBlocks shmem = shmem_size always_inline = true _scanBlockKernel!(
-        d_out,
-        d_in,
-        d_blockSums,
-        n,
-    )
-    CUDA.synchronize()
-
-    # Add the block prefixes (also EXCLUSIVE) into one block
-    @cuda threads = BLOCK_SIZE blocks = 1i32 shmem = shmem_size always_inline = true _scanBlockKernel!(
-        d_increments,
-        d_blockSums,
-        nothing,
-        numBlocks,
-    )
-    CUDA.synchronize()
-
-    # Add prefixes to each block
-    @cuda threads = BLOCK_SIZE blocks = numBlocks always_inline = true _addIncrementsKernel!(
-        d_out,
-        d_increments,
-        n,
-    )
-    CUDA.synchronize()
+    n::TIdx,
+) where {T,TIdx<:Integer}
+    largeArrayScanExclusive!(d_out, d_in, n)
 
     # Turning an EXCLUSIVE result into an INCLUSIVE one by adding input elements
     d_out .+= d_in
-    return nothing
-end
-
-function largeArrayScanInclusive!(d_out::CuVector{T}, d_in::CuVector{T}, n::Int32) where {T}
-    numBlocks, d_blockSums, d_increments = prepareScanBlocks!(T, n)
-    largeArrayScanInclusive!(d_out, d_in, n, d_blockSums, d_increments, numBlocks)
     return nothing
 end
 

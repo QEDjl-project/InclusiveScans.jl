@@ -4,7 +4,7 @@ using CUDA
 using InclusiveScans
 
 RNG = Xoshiro(137)  # Fixed seed
-SIZES = (1, 100, 1000, 25_000, 100_000)
+SIZES = (1, 100, 1000, 25_000, 100_000, 2^24)
 TYPES = (Float16, Float32, Float64, Int32, Int64, ComplexF32, ComplexF64)
 
 _custom_eps(::Type{T}) where {T<:AbstractFloat} = sqrt(eps(T))
@@ -32,6 +32,14 @@ _custom_eps(::Type{Complex{T}}) where {T<:AbstractFloat} = sqrt(eps(T))
             h_check = Base.accumulate(+, input)
 
             # Check if GPU result matches the CPU reference
+            @test isapprox(h_out, h_check, rtol = _custom_eps(T))
+
+            # Run exclusive scan on GPU
+            InclusiveScans.largeArrayScanExclusive!(d_out, d_in, Int32(N))
+
+            h_out = Array(d_out)
+            h_check .-= input
+
             @test isapprox(h_out, h_check, rtol = _custom_eps(T))
         end
     end
