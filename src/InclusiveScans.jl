@@ -7,7 +7,7 @@ const BLOCK_SIZE::Int32 = 1024
 const NUM_BANKS::Int32 = 32
 
 @inline function _conflict_free_access(n::TIdx) where {TIdx<:Integer}
-    return n + (n ÷ TIdx(NUM_BANKS))
+    return n + (n ÷ TIdx(NUM_BANKS)) + one(TIdx)
 end
 
 function _scanBlockKernel!(
@@ -16,7 +16,8 @@ function _scanBlockKernel!(
     blockSums::Union{CuDeviceVector{T},Nothing},
     n::TIdx,
 ) where {T,TIdx<:Integer}
-    temp = CuDynamicSharedArray(T, _conflict_free_access(blockDim().x * TIdx(2)))
+    temp =
+        CuDynamicSharedArray(T, _conflict_free_access(blockDim().x * TIdx(2)) - one(TIdx))
 
     tx::TIdx = threadIdx().x - one(TIdx)
     bx::TIdx = blockIdx().x - one(TIdx)
@@ -28,16 +29,15 @@ function _scanBlockKernel!(
 
     if tx >= zero(TIdx) && TIdx(2) * tx < TIdx(2) * blockDim().x
         if i1 < n
-            @inbounds temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))] =
-                g_idata[i1+one(TIdx)]
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx)] = g_idata[i1+one(TIdx)]
         else
-            @inbounds temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))] = zero(T)
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx)] = zero(T)
         end
         if i2 < n
-            @inbounds temp[_conflict_free_access(TIdx(2) * tx + TIdx(2))] =
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))] =
                 g_idata[i2+one(TIdx)]
         else
-            @inbounds temp[_conflict_free_access(TIdx(2) * tx + TIdx(2))] = zero(T)
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))] = zero(T)
         end
     end
     sync_threads()
@@ -50,8 +50,7 @@ function _scanBlockKernel!(
         if tx < d
             ai::TIdx = offset * (TIdx(2) * tx + TIdx(1)) - one(TIdx)
             bi::TIdx = offset * (TIdx(2) * tx + TIdx(2)) - one(TIdx)
-            @inbounds temp[_conflict_free_access(bi + one(TIdx))] +=
-                temp[_conflict_free_access(ai + one(TIdx))]
+            @inbounds temp[_conflict_free_access(bi)] += temp[_conflict_free_access(ai)]
         end
         offset <<= one(TIdx)
         d >>= one(TIdx)
@@ -63,9 +62,9 @@ function _scanBlockKernel!(
     if tx == zero(TIdx)
         if !isnothing(blockSums)
             @inbounds blockSums[bx+one(TIdx)] =
-                temp[_conflict_free_access(TIdx(2) * blockDim().x)]
+                temp[_conflict_free_access(TIdx(2) * blockDim().x - one(TIdx))]
         end
-        @inbounds temp[_conflict_free_access(TIdx(2) * blockDim().x)] = zero(T)
+        @inbounds temp[_conflict_free_access(TIdx(2) * blockDim().x - one(TIdx))] = zero(T)
     end
     sync_threads()
 
@@ -77,10 +76,9 @@ function _scanBlockKernel!(
         if tx < d
             ai = offset * (TIdx(2) * tx + one(TIdx)) - one(TIdx)
             bi = offset * (TIdx(2) * tx + TIdx(2)) - one(TIdx)
-            @inbounds t = temp[_conflict_free_access(ai + one(TIdx))]
-            @inbounds temp[_conflict_free_access(ai + one(TIdx))] =
-                temp[_conflict_free_access(bi + one(TIdx))]
-            @inbounds temp[_conflict_free_access(bi + one(TIdx))] += t
+            @inbounds t = temp[_conflict_free_access(ai)]
+            @inbounds temp[_conflict_free_access(ai)] = temp[_conflict_free_access(bi)]
+            @inbounds temp[_conflict_free_access(bi)] += t
         end
         d <<= one(TIdx)
     end
@@ -88,12 +86,11 @@ function _scanBlockKernel!(
 
     if tx >= zero(TIdx) && TIdx(2) * tx < TIdx(2) * blockDim().x
         if i1 < n
-            @inbounds g_odata[i1+one(TIdx)] =
-                temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))]
+            @inbounds g_odata[i1+one(TIdx)] = temp[_conflict_free_access(TIdx(2) * tx)]
         end
         if i2 < n
             @inbounds g_odata[i2+one(TIdx)] =
-                temp[_conflict_free_access(TIdx(2) * tx + one(TIdx) + one(TIdx))]
+                temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))]
         end
     end
 
@@ -126,7 +123,8 @@ function largeArrayScanExclusive!(
     d_in::CuVector{T},
     n::TIdx,
 ) where {T,TIdx<:Integer}
-    shmem_size::TIdx = BLOCK_SIZE * TIdx(2) * TIdx(sizeof(T))
+    shmem_size::TIdx =
+        (_conflict_free_access(BLOCK_SIZE * TIdx(2)) - one(TIdx)) * TIdx(sizeof(T))
 
     numBlocks = TIdx(cld(n, BLOCK_SIZE * TIdx(2)))
 
