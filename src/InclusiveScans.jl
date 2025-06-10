@@ -4,6 +4,11 @@ using CUDA
 using CUDA: i32
 
 const BLOCK_SIZE::Int32 = 1024
+const NUM_BANKS::Int32 = 32
+
+@inline function _conflict_free_access(n::TIdx) where {TIdx<:Integer}
+    return n + (n ÷ TIdx(NUM_BANKS))
+end
 
 function _scanBlockKernel!(
     g_odata::CuDeviceVector{T},
@@ -11,7 +16,7 @@ function _scanBlockKernel!(
     blockSums::Union{CuDeviceVector{T},Nothing},
     n::TIdx,
 ) where {T,TIdx<:Integer}
-    temp = CuDynamicSharedArray(T, blockDim().x * TIdx(2))
+    temp = CuDynamicSharedArray(T, _conflict_free_access(blockDim().x * TIdx(2)))
 
     tx::TIdx = threadIdx().x - one(TIdx)
     bx::TIdx = blockIdx().x - one(TIdx)
@@ -23,14 +28,16 @@ function _scanBlockKernel!(
 
     if tx >= zero(TIdx) && TIdx(2) * tx < TIdx(2) * blockDim().x
         if i1 < n
-            @inbounds temp[TIdx(2)*tx+one(TIdx)] = g_idata[i1+one(TIdx)]
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))] =
+                g_idata[i1+one(TIdx)]
         else
-            @inbounds temp[TIdx(2)*tx+one(TIdx)] = zero(T)
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))] = zero(T)
         end
         if i2 < n
-            @inbounds temp[TIdx(2)*tx+TIdx(2)] = g_idata[i2+one(TIdx)]
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx + TIdx(2))] =
+                g_idata[i2+one(TIdx)]
         else
-            @inbounds temp[TIdx(2)*tx+TIdx(2)] = zero(T)
+            @inbounds temp[_conflict_free_access(TIdx(2) * tx + TIdx(2))] = zero(T)
         end
     end
     sync_threads()
@@ -43,7 +50,8 @@ function _scanBlockKernel!(
         if tx < d
             ai::TIdx = offset * (TIdx(2) * tx + TIdx(1)) - one(TIdx)
             bi::TIdx = offset * (TIdx(2) * tx + TIdx(2)) - one(TIdx)
-            @inbounds temp[bi+one(TIdx)] += temp[ai+one(TIdx)]
+            @inbounds temp[_conflict_free_access(bi + one(TIdx))] +=
+                temp[_conflict_free_access(ai + one(TIdx))]
         end
         offset <<= one(TIdx)
         d >>= one(TIdx)
@@ -54,9 +62,10 @@ function _scanBlockKernel!(
     # Save sum of block -> blockSums[bx]
     if tx == zero(TIdx)
         if !isnothing(blockSums)
-            @inbounds blockSums[bx+one(TIdx)] = temp[TIdx(2)*blockDim().x]
+            @inbounds blockSums[bx+one(TIdx)] =
+                temp[_conflict_free_access(TIdx(2) * blockDim().x)]
         end
-        @inbounds temp[TIdx(2)*blockDim().x] = zero(T)
+        @inbounds temp[_conflict_free_access(TIdx(2) * blockDim().x)] = zero(T)
     end
     sync_threads()
 
@@ -68,9 +77,10 @@ function _scanBlockKernel!(
         if tx < d
             ai = offset * (TIdx(2) * tx + one(TIdx)) - one(TIdx)
             bi = offset * (TIdx(2) * tx + TIdx(2)) - one(TIdx)
-            @inbounds t = temp[ai+one(TIdx)]
-            @inbounds temp[ai+one(TIdx)] = temp[bi+one(TIdx)]
-            @inbounds temp[bi+one(TIdx)] += t
+            @inbounds t = temp[_conflict_free_access(ai + one(TIdx))]
+            @inbounds temp[_conflict_free_access(ai + one(TIdx))] =
+                temp[_conflict_free_access(bi + one(TIdx))]
+            @inbounds temp[_conflict_free_access(bi + one(TIdx))] += t
         end
         d <<= one(TIdx)
     end
@@ -78,10 +88,12 @@ function _scanBlockKernel!(
 
     if tx >= zero(TIdx) && TIdx(2) * tx < TIdx(2) * blockDim().x
         if i1 < n
-            @inbounds g_odata[i1+one(TIdx)] = temp[TIdx(2)*tx+one(TIdx)]
+            @inbounds g_odata[i1+one(TIdx)] =
+                temp[_conflict_free_access(TIdx(2) * tx + one(TIdx))]
         end
         if i2 < n
-            @inbounds g_odata[i2+one(TIdx)] = temp[TIdx(2)*tx+one(TIdx)+one(TIdx)]
+            @inbounds g_odata[i2+one(TIdx)] =
+                temp[_conflict_free_access(TIdx(2) * tx + one(TIdx) + one(TIdx))]
         end
     end
 
